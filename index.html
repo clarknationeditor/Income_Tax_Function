@@ -1,0 +1,1800 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Marginal Tax Rate Designer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,800&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+  :root {
+    --bg: #f4f1ea;
+    --surface: #ffffff;
+    --ink: #1a1a1a;
+    --ink-soft: #4a4a4a;
+    --ink-faint: #8a8a8a;
+    --rule: #e5e1d8;
+    --rule-soft: #ede9df;
+    --accent: #b8451d;
+    --accent-soft: rgba(184, 69, 29, 0.14);
+    --neg: #8b2331;
+    --pos: #2c5f3f;
+    --hist: #9577b6;
+    --hist-fill: rgba(149, 119, 182, 0.18);
+    --hist-stroke: #8268a8;
+    --poverty: #b5a48a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Public Sans', sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    padding: 32px 24px 64px;
+  }
+  .container { max-width: 1180px; margin: 0 auto; }
+
+  .masthead {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    border-bottom: 1px solid var(--ink);
+    padding-bottom: 14px;
+    margin-bottom: 28px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .masthead .kicker {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .masthead h1 {
+    font-family: 'Fraunces', serif;
+    font-weight: 800;
+    font-size: clamp(28px, 4vw, 44px);
+    margin: 4px 0 0;
+    letter-spacing: -0.015em;
+    line-height: 1;
+  }
+  .masthead .meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-faint);
+    text-align: right;
+  }
+
+  .kpis {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0;
+    border: 1px solid var(--rule);
+    background: var(--surface);
+    margin-bottom: 28px;
+  }
+  .kpi {
+    padding: 20px 18px;
+    border-right: 1px solid var(--rule);
+    position: relative;
+  }
+  .kpi:last-child { border-right: none; }
+  .kpi.macro { background: linear-gradient(180deg, #f8f5ee 0%, var(--surface) 100%); }
+  .kpi label {
+    display: block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 10px;
+  }
+  .kpi .value {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: clamp(20px, 2.6vw, 30px);
+    letter-spacing: -0.01em;
+    line-height: 1.05;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .kpi .value-secondary {
+    font-family: 'Fraunces', serif;
+    font-weight: 500;
+    font-size: clamp(14px, 1.8vw, 20px);
+    line-height: 1.05;
+    color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+    margin-top: 6px;
+  }
+  .kpi .value.neg { color: var(--neg); }
+  .kpi .value.pos { color: var(--pos); }
+  .kpi .sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--ink-soft);
+    margin-top: 6px;
+    line-height: 1.4;
+  }
+  .kpi .delta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    margin-top: 4px;
+    line-height: 1.4;
+  }
+  .delta.neg { color: var(--neg); }
+  .delta.pos { color: var(--pos); }
+
+  /* Inline source links inside KPI sub-text — subtle, hairline underline */
+  .kpi .sub a,
+  .kpi .delta a {
+    color: inherit;
+    text-decoration: none;
+    border-bottom: 1px dotted currentColor;
+  }
+  .kpi .sub a:hover,
+  .kpi .delta a:hover { border-bottom-style: solid; color: var(--ink); }
+
+  /* Hover-triggered breakdown popovers attached to numbers in KPI sub-text */
+  .popover-trigger {
+    position: relative;
+    cursor: help;
+    border-bottom: 1px dotted currentColor;
+  }
+  .popover-trigger.is-link {
+    color: inherit;
+    text-decoration: none;
+  }
+  .popover-trigger:hover { color: var(--ink); border-bottom-style: solid; }
+  .popover {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: 8px;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.10);
+    padding: 10px 12px;
+    width: 240px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    line-height: 1.5;
+    color: var(--ink-soft);
+    text-align: left;
+    z-index: 50;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s;
+    white-space: normal;
+  }
+  .popover-trigger:hover .popover,
+  .popover-trigger:focus-within .popover { opacity: 1; pointer-events: auto; }
+  /* Left-anchored variant: popover starts at the trigger's left edge and
+     extends to the right, so it can never spill off the left side of the
+     page. Used for triggers that sit near a left page/card edge. */
+  .popover.left-anchor {
+    left: 0;
+    transform: none;
+  }
+  .popover .row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 2px 0;
+  }
+  .popover .row.sub { padding-left: 12px; color: var(--ink-faint); }
+  .popover .row.total {
+    border-top: 1px solid var(--rule);
+    margin-top: 4px;
+    padding-top: 4px;
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .popover .row.custom { color: var(--accent); }
+  .popover .title {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-faint);
+    margin-bottom: 6px;
+  }
+
+  .chart-frame {
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    padding: 18px 18px 8px;
+    position: relative;
+  }
+  .chart-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 6px;
+    padding: 0 4px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .chart-title .t {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 16px;
+  }
+  .chart-title .controls-inline {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+  .chart-title .legend {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--ink-faint);
+    letter-spacing: 0.06em;
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .chart-title .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch {
+    display: inline-block;
+    width: 14px;
+    height: 2px;
+    background: var(--accent);
+  }
+  .swatch.area { height: 10px; background: var(--accent-soft); }
+  .swatch.line { background: var(--ink); }
+  .swatch.hist {
+    height: 10px;
+    background: var(--hist-fill);
+    border: 1px solid var(--hist-stroke);
+  }
+  .swatch.poverty {
+    height: 0; border-top: 2px dashed var(--ink);
+    background: transparent;
+  }
+
+  .toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    color: var(--ink-soft);
+  }
+  .toggle input { display: none; }
+  .toggle .box {
+    width: 14px;
+    height: 14px;
+    border: 1px solid var(--ink);
+    background: var(--surface);
+    position: relative;
+  }
+  .toggle input:checked + .box::after {
+    content: '';
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 8px; height: 8px;
+    background: var(--ink);
+  }
+
+  svg.chart { display: block; width: 100%; height: auto; }
+  .chart-scroll {
+    position: relative;
+  }
+  .chart-bottom {
+    display: flex;
+    justify-content: flex-end;
+    gap: 18px;
+    padding: 6px 4px 2px;
+    flex-wrap: wrap;
+  }
+  .axis path, .axis line { stroke: var(--rule); shape-rendering: crispEdges; }
+  .axis text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12.5px;
+    fill: var(--ink-soft);
+  }
+  .axis-left text { fill: var(--accent); }
+  .axis-left path, .axis-left line { stroke: var(--accent); opacity: 0.6; }
+  .axis-right text { fill: var(--hist-stroke); }
+  .axis-right path, .axis-right line { stroke: var(--hist-stroke); opacity: 0.4; }
+  .axis-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    fill: var(--ink-faint);
+  }
+  .axis-label.left  { fill: var(--accent); }
+  .axis-label.right { fill: var(--hist-stroke); }
+  .grid line { stroke: var(--rule-soft); stroke-dasharray: 2 3; }
+  .grid path { stroke: none; }
+  .segment-mark {
+    fill: none;
+    stroke: var(--ink-faint);
+    stroke-width: 1.25;
+    opacity: 0.8;
+  }
+  .curve {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 2.25;
+    stroke-linejoin: round;
+  }
+  .area { fill: var(--accent-soft); }
+  .income-line { stroke: var(--ink); stroke-width: 1.25; stroke-dasharray: 4 3; }
+  .income-dot { fill: var(--ink); }
+  .marker-line { stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 2 2; }
+  .marker-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    fill: var(--ink-soft);
+  }
+
+  .poverty-line {
+    stroke: var(--ink);
+    stroke-width: 2;
+    stroke-dasharray: 6 4;
+    opacity: 0.85;
+  }
+  .poverty-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    fill: var(--ink);
+    letter-spacing: 0.04em;
+    font-weight: 500;
+  }
+
+  .hover-line { stroke: var(--ink-faint); stroke-width: 1; opacity: 0; }
+  .hover-dot { fill: var(--accent); stroke: var(--surface); stroke-width: 2; opacity: 0; }
+  .hist-area {
+    fill: var(--hist-fill);
+    stroke: none;
+  }
+  .hist-line {
+    fill: none;
+    stroke: var(--hist-stroke);
+    stroke-width: 1.25;
+    stroke-linejoin: miter;
+    shape-rendering: crispEdges;
+  }
+  .tooltip {
+    position: absolute;
+    background: var(--ink);
+    color: var(--bg);
+    padding: 8px 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    pointer-events: none;
+    opacity: 0;
+    transform: translate(-50%, -120%);
+    white-space: nowrap;
+    line-height: 1.4;
+    max-width: 280px;
+  }
+  .tooltip strong { color: #f4a26b; font-weight: 500; }
+  .tooltip hr {
+    border: none;
+    border-top: 1px solid rgba(244, 241, 234, 0.2);
+    margin: 6px 0;
+  }
+  .tooltip small {
+    color: rgba(244, 241, 234, 0.6);
+    font-size: 10px;
+    white-space: normal;
+    display: inline-block;
+  }
+
+  .controls {
+    margin-top: 28px;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    padding: 24px;
+  }
+  .controls-header {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 10px;
+    margin-bottom: 18px;
+  }
+  .control-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 22px 36px;
+  }
+  .control { display: flex; flex-direction: column; gap: 8px; }
+  .control-fullwidth { grid-column: span 2; }
+  .control.disabled { opacity: 0.42; pointer-events: none; }
+  .control-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    min-height: 38px;
+  }
+  .control label.name {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: 14px;
+    line-height: 1.3;
+  }
+  .control .hint {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--ink-faint);
+    letter-spacing: 0.04em;
+  }
+  .control .value-readout {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    min-width: 120px;
+    line-height: 1.6;
+  }
+  .control input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: var(--rule);
+    outline: none;
+    margin: 4px 0;
+  }
+  .control input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 16px;
+    height: 16px;
+    background: var(--ink);
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid var(--surface);
+    box-shadow: 0 0 0 1px var(--ink);
+  }
+  .control input[type="range"]::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    background: var(--ink);
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid var(--surface);
+    box-shadow: 0 0 0 1px var(--ink);
+  }
+  .control .scale-marks {
+    position: relative;
+    height: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9px;
+    color: var(--ink-faint);
+    letter-spacing: 0.04em;
+    margin-top: -2px;
+  }
+  .control .scale-marks span {
+    position: absolute;
+    transform: translateX(-50%);
+    white-space: nowrap;
+  }
+  /* anchor first label to left edge, last label to right edge */
+  .control .scale-marks span:first-child { transform: none; }
+  .control .scale-marks span:last-child  { transform: translateX(-100%); }
+  .curve-buttons {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0;
+    border: 1px solid var(--rule);
+  }
+  .curve-buttons button {
+    font-family: 'Public Sans', sans-serif;
+    font-size: 11px;
+    background: var(--surface);
+    color: var(--ink-soft);
+    border: none;
+    border-right: 1px solid var(--rule);
+    padding: 9px 4px;
+    cursor: pointer;
+    letter-spacing: 0.03em;
+    transition: all 0.15s;
+  }
+  .curve-buttons button:last-child { border-right: none; }
+  .curve-buttons button:hover { background: var(--bg); color: var(--ink); }
+  .curve-buttons button.active { background: var(--ink); color: var(--bg); }
+  .curve-buttons button.special.active { background: var(--accent); color: var(--bg); }
+
+  .curve-notes {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    margin-top: 4px;
+  }
+  .curve-notes .note {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 9.5px;
+    color: var(--ink-faint);
+    letter-spacing: 0.02em;
+    padding: 0 4px;
+    line-height: 1.3;
+  }
+
+  .filing-row {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--rule);
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .filing-row .toggle { font-size: 11px; }
+
+  footer {
+    margin-top: 40px;
+    padding-top: 18px;
+    border-top: 1px solid var(--rule);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    color: var(--ink-faint);
+    letter-spacing: 0.04em;
+    line-height: 1.7;
+  }
+  footer a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid currentColor;
+  }
+  footer a:hover { color: var(--ink); }
+  footer .footer-section { margin-bottom: 16px; }
+  footer .footer-section:last-child { margin-bottom: 0; }
+  footer .footer-label {
+    display: block;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    font-size: 9px;
+    color: var(--ink-soft);
+    margin-bottom: 7px;
+  }
+  footer ul { margin: 0; padding-left: 16px; }
+  footer li { margin-bottom: 7px; }
+  footer li:last-child { margin-bottom: 0; }
+
+  /* =========================================================================
+     Responsive breakpoints — placed last so they win the cascade naturally
+     ========================================================================= */
+
+  /* Tablet KPI strip: 4-up doesn't fit, go 2x2 */
+  @media (min-width: 720px) and (max-width: 1080px) {
+    .kpis { grid-template-columns: repeat(2, 1fr); }
+    .kpi:nth-child(2) { border-right: none; }
+    .kpi:nth-child(3), .kpi:nth-child(4) { border-top: 1px solid var(--rule); }
+  }
+
+  /* Mobile: collapse to single column, reflow curve buttons */
+  @media (max-width: 720px) {
+    .control-grid { grid-template-columns: 1fr; gap: 18px; }
+    .kpis { grid-template-columns: repeat(2, 1fr); }
+    .kpi { border-right: 1px solid var(--rule); border-bottom: none; }
+    .kpi:nth-child(2n) { border-right: none; }
+    .kpi:nth-child(n+3) { border-top: 1px solid var(--rule); }
+
+    /* Parameters: stack tightly, wrap long labels */
+    .controls { padding: 18px 16px; }
+    .control.control-fullwidth { grid-column: auto; }
+    .control-row {
+      flex-wrap: wrap;
+      min-height: 0;
+      row-gap: 2px;
+    }
+    .control label.name { flex: 1 1 60%; min-width: 0; }
+    .control .value-readout { min-width: 0; flex: 0 0 auto; }
+
+    /* Curve buttons: 2 cols + 5th button spans both rows; rebuild internal borders */
+    .curve-buttons { grid-template-columns: 1fr 1fr; }
+    .curve-buttons button {
+      border-right: 1px solid var(--rule);
+      border-bottom: 1px solid var(--rule);
+    }
+    .curve-buttons button:nth-child(2),
+    .curve-buttons button:nth-child(4) { border-right: none; }
+    .curve-buttons button:nth-child(5) {
+      grid-column: span 2;
+      border-right: none;
+      border-bottom: none;
+    }
+    /* Notes can't be aligned to the reflowed 2-col grid; the curve shapes are
+       also visually obvious from the chart itself. */
+    .curve-notes { display: none; }
+
+    /* Filing toggles: stack toggle above its hint */
+    .filing-row { flex-direction: column; align-items: flex-start; gap: 4px; }
+
+    /* $1B label sits at 90% and crowds $10B at 100% on narrow widths */
+    .scale-marks .mark-narrow { display: none; }
+  }
+
+  /* Extra-narrow phones: trim padding and font sizes further */
+  @media (max-width: 420px) {
+    body { padding: 24px 12px 48px; }
+    .controls { padding: 14px 12px; }
+    .controls-header { font-size: 9.5px; letter-spacing: 0.14em; }
+    .control label.name { font-size: 13px; }
+    .control .value-readout { font-size: 12px; }
+    .curve-buttons button { font-size: 10px; padding: 8px 2px; }
+    .filing-row .toggle { font-size: 10.5px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header class="masthead">
+    <div>
+      <div class="kicker">Fiscal Policy / Interactive · May 2026</div>
+      <h1>Marginal Tax Rate Designer</h1>
+    </div>
+    <div class="meta">
+      An exercise in tax-curve geometry<br>
+      Drag the controls. Watch the math.
+    </div>
+  </header>
+
+  <section class="kpis">
+    <div class="kpi">
+      <label>Your taxes</label>
+      <div class="value" id="kpi-effective">—</div>
+      <div class="value-secondary" id="kpi-taxes">—</div>
+      <div class="sub" id="kpi-taxes-sub">on — income</div>
+    </div>
+    <div class="kpi">
+      <label>Federal income tax revenue</label>
+      <div class="value" id="kpi-revenue">—</div>
+      <div class="sub" id="kpi-revenue-sub">from individuals</div>
+    </div>
+    <div class="kpi macro">
+      <label id="kpi-deficit-label">Projected FY26 deficit</label>
+      <div class="value" id="kpi-deficit">—</div>
+      <div class="sub" id="kpi-deficit-sub">revenue − outlaid expenses</div>
+      <div class="delta" id="kpi-deficit-delta"></div>
+    </div>
+    <div class="kpi macro">
+      <label>National debt (proj. EOY)</label>
+      <div class="value" id="kpi-debt">—</div>
+      <div class="sub" id="kpi-debt-sub">2025/10/01 debt + projected deficit</div>
+      <div class="delta" id="kpi-debt-delta"></div>
+    </div>
+  </section>
+
+  <section class="chart-frame">
+    <div class="chart-title">
+      <div class="t">Marginal rate vs. annual income</div>
+      <div class="controls-inline">
+        <label class="toggle">
+          <input type="checkbox" id="showHist">
+          <span class="box"></span>
+          <span>Show distribution of tax returns</span>
+        </label>
+        <div class="legend">
+          <span><span class="swatch"></span> marginal rate</span>
+          <span><span class="swatch area"></span> your tax</span>
+          <span><span class="swatch line"></span> your income</span>
+          <span><span class="swatch hist"></span> tax returns</span>
+          <span><span class="swatch poverty"></span> poverty line</span>
+        </div>
+      </div>
+    </div>
+    <div class="chart-scroll" id="chartScroll">
+      <svg class="chart" id="chart" viewBox="0 0 1100 460" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+    <div class="chart-bottom">
+      <label class="toggle">
+        <input type="checkbox" id="xLinear">
+        <span class="box"></span>
+        <span>Use linear x-axis (default: log)</span>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" id="yLog">
+        <span class="box"></span>
+        <span>Use log y-axis (default: linear)</span>
+      </label>
+    </div>
+    <div class="tooltip" id="tooltip"></div>
+  </section>
+
+  <section class="controls">
+    <div class="controls-header">Parameters</div>
+    <div class="control-grid">
+
+      <div class="control" id="ctrl-maxRate">
+        <div class="control-row">
+          <label class="name">Maximum marginal rate</label>
+          <span class="value-readout" id="maxRateText"></span>
+        </div>
+        <input type="range" id="maxRateSlider" min="10" max="100" step="1" value="50" />
+        <div class="scale-marks">
+          <span style="left:0%">10%</span>
+          <span style="left:22.2%">30%</span>
+          <span style="left:44.4%">50%</span>
+          <span style="left:66.7%">70%</span>
+          <span style="left:100%">100%</span>
+        </div>
+      </div>
+
+      <div class="control" id="ctrl-plateau">
+        <div class="control-row">
+          <label class="name">Income plateau <span class="hint">— max rate from here on</span></label>
+          <span class="value-readout" id="plateauText"></span>
+        </div>
+        <input type="range" id="plateauSlider" min="0" max="1000" value="700" />
+        <div class="scale-marks">
+          <span style="left:0%">$15.96K</span>
+          <span style="left:31%">$1M</span>
+          <span style="left:65.5%">$100M</span>
+          <span style="left:100%">$10B</span>
+        </div>
+      </div>
+
+      <div class="control" id="ctrl-zero">
+        <div class="control-row">
+          <label class="name">Zero-tax threshold <span class="hint">— no tax below this</span></label>
+          <span class="value-readout" id="zeroText"></span>
+        </div>
+        <input type="range" id="zeroSlider" min="0" max="1000" value="350" />
+        <div class="scale-marks">
+          <span style="left:0%">$0</span>
+          <span style="left:30%">$1K</span>
+          <span style="left:50%">$100K</span>
+          <span style="left:70%">$10M</span>
+          <span style="left:90%" class="mark-narrow">$1B</span>
+          <span style="left:100%">$10B</span>
+        </div>
+      </div>
+
+      <div class="control">
+        <div class="control-row">
+          <label class="name">Your annual income</label>
+          <span class="value-readout" id="myIncomeText"></span>
+        </div>
+        <input type="range" id="myIncomeSlider" min="0" max="1000" value="500" />
+        <div class="scale-marks">
+          <span style="left:0%">$0</span>
+          <span style="left:30%">$1K</span>
+          <span style="left:50%">$100K</span>
+          <span style="left:70%">$10M</span>
+          <span style="left:90%" class="mark-narrow">$1B</span>
+          <span style="left:100%">$10B</span>
+        </div>
+      </div>
+
+      <div class="control control-fullwidth">
+        <div class="control-row">
+          <label class="name">Curve shape <span class="hint">— first four use the thresholds above; "2026 actual" overrides them with current US brackets + standard deduction</span></label>
+        </div>
+        <div class="curve-buttons" id="curveButtons">
+          <button data-curve="linear">Linear</button>
+          <button data-curve="s-curve">S-curve</button>
+          <button data-curve="step">Step</button>
+          <button data-curve="exponential">Exponential</button>
+          <button data-curve="brackets-2026" class="special">2026 actual</button>
+        </div>
+        <div class="curve-notes">
+          <span class="note">↑ linear in $, not straight on log axis</span>
+          <span class="note">↑ centered in $, not on log axis</span>
+          <span class="note">↑ centered in $, not on log axis</span>
+        </div>
+        <div class="filing-row">
+          <label class="toggle">
+            <input type="checkbox" id="filingJoint">
+            <span class="box"></span>
+            <span>Treat all returns as married filing jointly</span>
+          </label>
+          <span class="hint">applies to "2026 actual" — wider brackets, higher std. deduction</span>
+        </div>
+        <div class="filing-row">
+          <label class="toggle">
+            <input type="checkbox" id="capGainsAsIncome">
+            <span class="box"></span>
+            <span>Treat capital gains as ordinary income</span>
+          </label>
+          <span class="hint">adds the marginal-rate delta vs. the preferential 15% on ~$1.76T of long-term gains realized annually</span>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <footer>
+    <div class="footer-section">
+      <span class="footer-label">Notes</span>
+      <ul>
+        <li>This simulator overstates revenue ~35% versus what the IRS actually collects,
+        because it treats all AGI as ordinary income with no preferential cap-gains rates,
+        itemized deductions, QBI, or credits. That's a documented modeling simplification.</li>
+        <li>Bracket counts are <em>tax-filing units</em> (158M returns, excluding 2.18M "no AGI"
+        returns from Table 1.1 that fall below the log-scale floor), not households — joint filers
+        count as one return, dependents may file separately, so the total exceeds the ~131M U.S.
+        household count. All four custom curves (Linear, S-curve, Step, Exponential) interpolate
+        in dollar space between the two thresholds, so they appear visually skewed on the log
+        x-axis but are mathematically symmetric in income.</li>
+      </ul>
+    </div>
+    <div class="footer-section">
+      <span class="footer-label">Sources</span>
+      Federal outlays FY2026 = $7.449T, total revenues $5.596T, individual income taxes $2.751T,
+      projected deficit $1.853T
+      (<a href="https://www.cbo.gov/system/files/2026-02/61882-By-the-Numbers.pdf" target="_blank" rel="noopener">CBO Budget &amp; Economic Outlook, Feb 2026 — "By the Numbers"</a>).
+      Non-individual revenue ($2.845T) = total revenue minus individual income taxes, same source.
+      Gross national debt = $37,864,059,502,725.70 at the start of FY 2026 (Oct 1, 2025)
+      (<a href="https://fiscaldata.treasury.gov/datasets/debt-to-the-penny/" target="_blank" rel="noopener">US Treasury Fiscal Data — Debt to the Penny</a> /
+      <a href="https://www.jec.senate.gov/public/index.cfm/republicans/2026/3/national-debt-reaches-38-86-trillion-increased-2-64-trillion-year-over-year-7-23-billion-per-day" target="_blank" rel="noopener">Senate JEC</a>).
+      2026 single &amp; joint brackets from
+      <a href="https://www.irs.gov/pub/irs-drop/rp-25-32.pdf" target="_blank" rel="noopener">IRS Rev. Proc. 2025-32</a>,
+      with $16,100 / $32,200 standard deduction respectively.
+      Poverty guidelines from
+      <a href="https://aspe.hhs.gov/topics/poverty-economic-mobility/poverty-guidelines" target="_blank" rel="noopener">HHS, Jan 2026</a>:
+      $15,960 for one person, $33,000 for a family of four (48 contiguous states &amp; DC).
+      Distribution shown as a step plot over 18 AGI brackets, with each step's height =
+      return count ÷ log₁₀(bracket width). Bracket counts are the actual published values from
+      the IRS Statistics of Income Division,
+      <a href="https://www.irs.gov/pub/irs-soi/23in11si.xls" target="_blank" rel="noopener">Publication&nbsp;1304, Table&nbsp;1.1</a>,
+      for Tax Year 2023 — released 2026, the most recent complete report, with all tables on the
+      <a href="https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income" target="_blank" rel="noopener">IRS SOI individual statistics page</a>.
+    </div>
+  </footer>
+
+</div>
+
+<script>
+const state = {
+  myIncome: 100000,
+  maxRate: 80,
+  plateau: 250_000,
+  zeroThreshold: 70_000,
+  curveType: 's-curve',
+  showHist: true,
+  filingJoint: false,
+  capGainsAsIncome: true,
+  xLinear: false,
+  yLog: false
+};
+
+// FY2026 federal outlays and revenue projections sourced from CBO's
+// "Budget and Economic Outlook: 2026 to 2036" (Feb 2026), "By the Numbers"
+// supplement: total outlays $7,449B, total revenue $5,596B, individual
+// income taxes $2,751B (so non-IIT revenue = $5,596B − $2,751B = $2,845B),
+// total projected deficit $1,853B. Gross national debt at the start of
+// FY2026 (Oct 1, 2025) from US Treasury Fiscal Data, Debt to the Penny.
+// The income-tax reference uses TY 2023 actual ($2.148T total income tax,
+// IRS Pub 1304 Table 1.1) — the distribution the chart simulates against.
+const FEDERAL_OUTLAYS_FY26    = 7.449e12;
+const NON_IIT_REVENUE_FY26    = 2.845e12;
+const NATIONAL_DEBT_FY26_START = 37864059502725.70;  // Oct 1, 2025 (FY26 start)
+const ACTUAL_IIT_REVENUE      = 2.148e12;
+// CBO's published FY26 baseline deficit, used as a static reference point
+// for the "baseline under current law" tag below the deficit KPI.
+const ACTUAL_DEFICIT_BASELINE = 1.853e12;
+
+// Canonical source URLs — referenced from KPI sub-lines and footer so the
+// numbers above can be verified against their original publishers.
+const SOURCE_URL = {
+  cboOutlook:   'https://www.cbo.gov/system/files/2026-02/61882-By-the-Numbers.pdf',
+  treasuryDebt: 'https://fiscaldata.treasury.gov/datasets/debt-to-the-penny/',
+  jecDebt:      'https://www.jec.senate.gov/public/index.cfm/republicans/2026/3/national-debt-reaches-38-86-trillion-increased-2-64-trillion-year-over-year-7-23-billion-per-day',
+  irsPub1304:   'https://www.irs.gov/pub/irs-soi/23in11si.xls',
+  irsSoiPage:   'https://www.irs.gov/statistics/soi-tax-stats-individual-statistical-tables-by-size-of-adjusted-gross-income',
+  irsRevProc:   'https://www.irs.gov/pub/irs-drop/rp-25-32.pdf',
+  hhsPoverty:   'https://aspe.hhs.gov/topics/poverty-economic-mobility/poverty-guidelines'
+};
+const linkTo = (url, text) =>
+  `<a href="${url}" target="_blank" rel="noopener">${text}</a>`;
+
+// CBO Feb 2026 "By the Numbers" line items for the FY 2026 baseline.
+// These power the breakdown tooltips on the deficit card. Numbers in dollars.
+const FY26_REVENUE_PARTS = [
+  { label: 'Payroll taxes',         value: 1.826e12 },
+  { label: 'Corporate income tax',  value: 0.404e12 },
+  { label: 'Customs duties',        value: 0.418e12 },
+  { label: 'Other',                 value: 0.197e12 }
+];
+const FY26_OUTLAY_PARTS = [
+  { label: 'Mandatory',          value: 4.529e12, children: [
+    { label: 'Social Security',  value: 1.666e12 },
+    { label: 'Medicare',         value: 1.063e12 },
+    { label: 'Medicaid · CHIP · marketplace', value: 0.845e12 },
+    { label: 'Other mandatory',  value: 0.955e12 }
+  ]},
+  { label: 'Discretionary',      value: 1.880e12, children: [
+    { label: 'Defense',          value: 0.885e12 },
+    { label: 'Nondefense',       value: 0.996e12 }
+  ]},
+  { label: 'Net interest',       value: 1.039e12 }
+];
+
+// Helper: render a row of (label, dollar amount) with optional className.
+const popRow = (label, value, cls = '') =>
+  `<div class="row${cls ? ' ' + cls : ''}"><span>${label}</span><span>${fmtMoney(value)}</span></div>`;
+
+// Capital gains realized annually, currently taxed at a ~15% blended
+// preferential rate. This base is set equal to the sum of the per-return
+// histogram shifts below (CG_PER_RETURN × bracket counts ≈ $1.76T) so the
+// revenue boost and the visual distribution shift describe the same pool.
+// $1.76T sits between recent realizations: TY2022 trough $1.24T, 2021 peak
+// $2.03T (IRS Pub 1304 Table A).
+const CAP_GAINS_BASE = 1.76e12;
+const CAP_GAINS_PREFERENTIAL_RATE = 15;
+
+// Chart x-domain
+const X_MIN = 1000;
+const X_MAX = 1e10;     // $10B
+const SLIDER_MAX_DOLLAR = 1e10;
+
+// Discontinuous (piecewise-linear) x-axis for "linear" mode.
+// Each segment gets a fraction of the drawing width and is linearly scaled
+// within that fraction. The result spans $0 → $10B with the bulk of width
+// allocated to the income range where most tax returns actually live.
+const BROKEN_SEGMENTS = [
+  { from: 0,    to: 1e6,  fraction: 0.42 },   // $0 → $1M
+  { from: 1e6,  to: 1e7,  fraction: 0.17 },   // $1M → $10M
+  { from: 1e7,  to: 1e8,  fraction: 0.17 },   // $10M → $100M
+  { from: 1e8,  to: 1e9,  fraction: 0.12 },   // $100M → $1B
+  { from: 1e9,  to: 1e10, fraction: 0.12 }    // $1B → $10B
+];
+// Tick values that label the segment boundaries plus a few interior points.
+const BROKEN_TICKS = [0, 500e3, 1e6, 1e7, 1e8, 1e9, 1e10];
+
+// 2026 federal brackets (IRS Rev. Proc. 2025-32)
+const BRACKETS_2026 = {
+  single: {
+    stdDeduction: 16100,
+    brackets: [
+      { from:        0, rate: 10 },
+      { from:   12400, rate: 12 },
+      { from:   50400, rate: 22 },
+      { from:  105700, rate: 24 },
+      { from:  201775, rate: 32 },
+      { from:  256225, rate: 35 },
+      { from:  640600, rate: 37 }
+    ]
+  },
+  joint: {
+    stdDeduction: 32200,
+    brackets: [
+      { from:        0, rate: 10 },
+      { from:   24800, rate: 12 },
+      { from:  100800, rate: 22 },
+      { from:  211400, rate: 24 },
+      { from:  403550, rate: 32 },
+      { from:  512450, rate: 35 },
+      { from:  768700, rate: 37 }
+    ]
+  }
+};
+
+// Poverty guidelines (HHS Jan 2026, 48 contiguous states + DC)
+const POVERTY = [
+  { value: 15960, label: 'poverty (1 person)' },
+  { value: 33000, label: 'poverty (family of 4)' }
+];
+
+// US individual income tax returns by size of AGI.
+// Source: IRS, Statistics of Income Division, Publication 1304,
+// Table 1.1, "All Returns: Selected Income and Tax Items, by Size and
+// Accumulated Size of Adjusted Gross Income," Tax Year 2023 (released
+// 2026; this is the most recent complete report).
+// Total here is 158.42M; the 2.18M "no adjusted gross income" returns from
+// Table 1.1 are excluded because they fall below the log-scale floor.
+// IRS counts tax-filing units (returns), not households — joint filers
+// contribute one return each, dependents may file separately.
+//
+// agi = total adjusted gross income for the bracket (also from Table 1.1).
+// Storing this lets us compute the realistic average AGI per return
+// (= agi / count), which is essential for top brackets that span several
+// orders of magnitude — naive linear sampling of $10M–$10B puts the mean
+// at $5B, when the actual IRS-reported mean for $10M+ filers is ~$30M.
+const incomeDistribution = [
+  { min: 1_000,       max: 5_000,         count:  7_357_751, agi:       17_450_063_000 },
+  { min: 5_000,       max: 10_000,        count:  8_077_917, agi:       60_949_546_000 },
+  { min: 10_000,      max: 15_000,        count:  8_986_005, agi:      112_353_814_000 },
+  { min: 15_000,      max: 20_000,        count:  8_702_094, agi:      151_828_408_000 },
+  { min: 20_000,      max: 25_000,        count:  7_925_999, agi:      178_000_708_000 },
+  { min: 25_000,      max: 30_000,        count:  7_594_157, agi:      208_919_443_000 },
+  { min: 30_000,      max: 40_000,        count: 15_210_266, agi:      531_782_365_000 },
+  { min: 40_000,      max: 50_000,        count: 13_519_034, agi:      606_242_938_000 },
+  { min: 50_000,      max: 75_000,        count: 24_135_884, agi:    1_485_510_450_000 },
+  { min: 75_000,      max: 100_000,       count: 15_775_468, agi:    1_366_616_429_000 },
+  { min: 100_000,     max: 200_000,       count: 27_602_755, agi:    3_818_295_141_000 },
+  { min: 200_000,     max: 500_000,       count: 10_955_818, agi:    3_153_877_437_000 },
+  { min: 500_000,     max: 1_000_000,     count:  1_779_720, agi:    1_194_934_962_000 },
+  { min: 1_000_000,   max: 1_500_000,     count:    368_931, agi:      443_658_405_000 },
+  { min: 1_500_000,   max: 2_000_000,     count:    147_290, agi:      252_903_399_000 },
+  { min: 2_000_000,   max: 5_000_000,     count:    203_229, agi:      602_653_109_000 },
+  { min: 5_000_000,   max: 10_000_000,    count:     49_262, agi:      336_334_760_000 },
+  { min: 10_000_000,  max: 10_000_000_000, count:    30_382, agi:      907_900_917_000 }
+];
+
+/* ============================================================
+   Marginal rate function
+   ============================================================ */
+function marginalRate(income) {
+  const { zeroThreshold, plateau, maxRate, curveType, filingJoint } = state;
+
+  if (curveType === 'brackets-2026') {
+    const cfg = BRACKETS_2026[filingJoint ? 'joint' : 'single'];
+    const taxable = income - cfg.stdDeduction;
+    if (taxable <= 0) return 0;
+    const bracket = cfg.brackets.findLast(b => taxable >= b.from);
+    return bracket ? bracket.rate : 0;
+  }
+
+  if (income < zeroThreshold) return 0;
+  if (income >= plateau) return maxRate;
+  if (plateau <= zeroThreshold) return maxRate;
+
+  // All custom curves interpolate linearly in dollar space.
+  const t = (income - zeroThreshold) / (plateau - zeroThreshold);
+
+  switch (curveType) {
+    case 'linear':
+      return t * maxRate;
+    case 's-curve': {
+      const x = (t - 0.5) * 12;
+      return (1 / (1 + Math.exp(-x))) * maxRate;
+    }
+    case 'step':
+      return t < 0.5 ? 0 : maxRate;
+    case 'exponential':
+      return ((Math.exp(t * 4) - 1) / (Math.exp(4) - 1)) * maxRate;
+  }
+  return 0;
+}
+
+/* ============================================================
+   Tax integration
+   ============================================================ */
+function calculateTaxes(income, steps) {
+  if (income <= 0) return 0;
+  const n = steps || 400;
+  const dx = income / n;
+  let tax = 0;
+  for (let i = 0; i < n; i++) {
+    const x = i * dx + dx / 2;
+    tax += (marginalRate(x) / 100) * dx;
+  }
+  return tax;
+}
+
+// Compute simulated federal income tax revenue under the current curve.
+// For each bracket we use the IRS-reported average AGI per return rather
+// than naively sampling the bracket range. The top bracket spans $10M to
+// $10B but its actual mean income is only ~$30M, so linear midpoint sampling
+// of that bracket alone would phantom-inflate revenue by $60T+.
+//
+// Limitation: the simulator treats every dollar of AGI as ordinary income.
+// Actual high-income filers pay an effective rate around 25%, not 37%,
+// because much of their AGI is preferential-rate long-term capital gains
+// and qualified dividends, and they also claim itemized deductions, the
+// QBI deduction, foreign tax credits, etc. So under the "2026 actual"
+// curve this simulator produces ~$2.9T on TY 2023 AGI vs. the $2.15T the
+// IRS actually collected. The "Treat capital gains as ordinary income"
+// toggle re-incorporates the preferential-rate gap as a revenue boost.
+function calculateNationalRevenue() {
+  let total = 0;
+  for (const b of incomeDistribution) {
+    const avgAGI = b.agi / b.count;
+    total += calculateTaxes(avgAGI, 200) * b.count;
+  }
+  return total;
+}
+
+/* ============================================================
+   Cap-gains-augmented distribution: each bracket gets shifted upward
+   by the approximate per-return cap-gains realization at that income
+   level. Per-return values × TY 2023 bracket counts sum to ~$1.76T —
+   in the same ballpark as recent annual realizations (TY 2022 was the
+   trough at $1.24T per IRS Pub 1304 Table A; 2021 peaked at $2.03T;
+   TY 2023 likely landed somewhere in between). Weighted heavily
+   toward upper brackets where realizations concentrate. Indices
+   align with the 18-bracket IRS schema above.
+   ============================================================ */
+const CG_PER_RETURN = {
+  9:  1_000,         // $75K-$100K
+  10: 4_000,         // $100K-$200K
+  11: 25_000,        // $200K-$500K
+  12: 80_000,        // $500K-$1M
+  13: 300_000,       // $1M-$1.5M
+  14: 700_000,       // $1.5M-$2M
+  15: 1_500_000,     // $2M-$5M
+  16: 5_000_000,     // $5M-$10M
+  17: 15_000_000     // $10M+
+};
+const cgIncomeDistribution = incomeDistribution.map((b, i) => {
+  const shift = CG_PER_RETURN[i] || 0;
+  return shift
+    ? { min: b.min + shift, max: b.max + shift, count: b.count, agi: b.agi + shift * b.count }
+    : b;
+});
+
+/* ============================================================
+   Formatting
+   ============================================================ */
+function fmtMoney(v) {
+  const sign = v < 0 ? '-' : '';
+  v = Math.abs(v);
+  if (v >= 1e12) return sign + '$' + (v / 1e12).toFixed(2) + 'T';
+  if (v >= 1e9)  return sign + '$' + (v / 1e9).toFixed(2) + 'B';
+  if (v >= 1e6)  return sign + '$' + (v / 1e6).toFixed(2) + 'M';
+  if (v >= 1e3)  return sign + '$' + (v / 1e3).toFixed(1) + 'K';
+  return sign + '$' + Math.round(v).toLocaleString();
+}
+function fmtMoneyFull(v) {
+  return (v < 0 ? '-' : '') + '$' + Math.round(Math.abs(v)).toLocaleString();
+}
+function fmtCount(v) {
+  if (v >= 1e6) return (v / 1e6).toFixed(0) + 'M';
+  if (v >= 1e3) return (v / 1e3).toFixed(0) + 'K';
+  return Math.round(v).toString();
+}
+function fmtPct(v) { return v.toFixed(1) + '%'; }
+
+/* ============================================================
+   Slider <-> dollars (log mapping, max = $10B)
+   ============================================================ */
+function sliderToDollars(s, min) {
+  min = min || 0;
+  if (min === 0 && s <= 0) return 0;
+  const startDollar = min > 0 ? min : 1;
+  const startSlider = min > 0 ? 0 : 1;
+  if (s <= startSlider) return startDollar;
+  const logMin = Math.log10(startDollar);
+  const logMax = Math.log10(SLIDER_MAX_DOLLAR);
+  const t = (s - startSlider) / (1000 - startSlider);
+  return Math.pow(10, logMin + t * (logMax - logMin));
+}
+function dollarsToSlider(d, min) {
+  min = min || 0;
+  const startDollar = min > 0 ? min : 1;
+  const startSlider = min > 0 ? 0 : 1;
+  if (d <= startDollar) return startSlider;
+  const logMin = Math.log10(startDollar);
+  const logMax = Math.log10(SLIDER_MAX_DOLLAR);
+  const t = (Math.log10(d) - logMin) / (logMax - logMin);
+  return Math.round(startSlider + t * (1000 - startSlider));
+}
+
+/* ============================================================
+   D3 chart setup
+   ============================================================ */
+const svg = d3.select('#chart');
+const tooltip = d3.select('#tooltip');
+const W = 1100, H = 460;
+const margin = { top: 28, right: 70, bottom: 56, left: 64 };
+const innerW = W - margin.left - margin.right;
+const innerH = H - margin.top - margin.bottom;
+
+const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+// Piecewise-linear ("broken") scale: each segment linearly maps its [from, to]
+// data range to its allotted fraction of the drawing area. Mimics a d3 scale
+// closely enough for line/area generators and d3.axisBottom to use it.
+function buildBrokenScale() {
+  let cumulative = 0;
+  const ranges = BROKEN_SEGMENTS.map(s => {
+    const start = cumulative;
+    cumulative += s.fraction;
+    return { from: s.from, to: s.to, start: start * innerW, end: cumulative * innerW };
+  });
+  function scale(v) {
+    if (v <= ranges[0].from) return ranges[0].start;
+    for (const r of ranges) {
+      if (v <= r.to) {
+        return r.start + (v - r.from) / (r.to - r.from) * (r.end - r.start);
+      }
+    }
+    return ranges[ranges.length - 1].end;
+  }
+  scale.invert = function(p) {
+    if (p <= 0) return ranges[0].from;
+    for (const r of ranges) {
+      if (p <= r.end) {
+        return r.from + (p - r.start) / (r.end - r.start) * (r.to - r.from);
+      }
+    }
+    return ranges[ranges.length - 1].to;
+  };
+  scale.copy = buildBrokenScale;
+  scale.range = () => [0, innerW];
+  scale.domain = () => [ranges[0].from, ranges[ranges.length - 1].to];
+  scale.segments = ranges;
+  return scale;
+}
+
+function buildXScale() {
+  return state.xLinear
+    ? buildBrokenScale()
+    : d3.scaleLog().domain([X_MIN, X_MAX]).range([0, innerW]).clamp(true);
+}
+let x = buildXScale();
+const y = d3.scaleLinear().domain([0, 100]).range([innerH, 0]);
+
+// Compute peak bracket density (returns per log-decade) across all brackets
+function bracketDensity(b) {
+  const lo = Math.max(X_MIN, b.min);
+  if (b.max <= lo) return 0;
+  return b.count / (Math.log10(b.max) - Math.log10(lo));
+}
+const peakDensity = d3.max(
+  [...incomeDistribution, ...cgIncomeDistribution],
+  bracketDensity
+);
+const HIST_TOP_FRAC = 0.08;     // histogram occupies bottom 92% of chart
+const HIST_LOG_MIN = 100;       // floor for log mode (returns per log-decade)
+function buildYHistScale() {
+  return state.yLog
+    ? d3.scaleLog().domain([HIST_LOG_MIN, peakDensity * 1.05]).range([innerH, innerH * HIST_TOP_FRAC]).clamp(true)
+    : d3.scaleLinear().domain([0, peakDensity * 1.05]).range([innerH, innerH * HIST_TOP_FRAC]);
+}
+let yHist = buildYHistScale();
+
+// Grid
+const xGridG = g.append('g').attr('class', 'grid').attr('transform', `translate(0,${innerH})`);
+const yGridG = g.append('g').attr('class', 'grid');
+
+// Histogram layer (BEHIND curve)
+const histGroup = g.append('g').attr('class', 'histogram');
+const histAreaPath = histGroup.append('path').attr('class', 'hist-area');
+const histLinePath = histGroup.append('path').attr('class', 'hist-line');
+
+// Poverty lines — capture references so they can be repositioned on scale changes
+const povertyGroup = g.append('g').attr('class', 'poverty');
+const povertyMarkers = POVERTY.map((p, i) => ({
+  line: povertyGroup.append('line').attr('class', 'poverty-line')
+    .attr('y1', 0).attr('y2', innerH),
+  label: povertyGroup.append('text').attr('class', 'poverty-label')
+    .attr('y', 12 + i * 12).text(p.label),
+  value: p.value
+}));
+
+// Axes — capture the x-axis group so it can be redrawn on scale change
+const moneyTickLabel = v => {
+  if (v >= 1e10) return '$10B';
+  if (v >= 1e9)  return '$1B';
+  if (v >= 1e6)  return '$' + (v / 1e6) + 'M';
+  if (v >= 1e3)  return '$' + (v / 1e3) + 'K';
+  return '$' + v;
+};
+const LOG_TICKS = [1e3, 1e4, 1e5, 1e6, 1e7, 1e8, 1e9, 1e10];
+const xAxisG = g.append('g').attr('class', 'axis').attr('transform', `translate(0,${innerH})`);
+const yAxisG = g.append('g').attr('class', 'axis axis-left');
+const segmentMarkers = g.append('g').attr('class', 'segment-markers');
+
+function drawAxes() {
+  // X axis + grid
+  const xTicks = state.xLinear ? BROKEN_TICKS : LOG_TICKS;
+  xAxisG.call(d3.axisBottom(x).tickValues(xTicks).tickFormat(moneyTickLabel));
+  xGridG.call(d3.axisBottom(x).tickValues(xTicks).tickSize(-innerH).tickFormat(''));
+  if (xAxisLabel) {
+    xAxisLabel.text(state.xLinear ? 'Annual income (discontinuous linear)' : 'Annual income (log scale)');
+  }
+
+  // Left y-axis + grid (marginal tax rate — always linear 0–100%)
+  const yTicks = [0, 20, 40, 60, 80, 100];
+  yAxisG.call(d3.axisLeft(y).tickValues(yTicks).tickFormat(d => d + '%'));
+  yGridG.call(d3.axisLeft(y).tickValues(yTicks).tickSize(-innerW).tickFormat(''));
+
+  // Right axis (return density) — linear or log per state.yLog
+  if (rightAxis) {
+    const histTicks = state.yLog
+      ? [1e2, 1e3, 1e4, 1e5, 1e6, 1e7, 1e8]
+      : null;  // let d3 pick reasonable tick values for linear
+    const histAxis = d3.axisRight(yHist).tickFormat(d => fmtCount(d));
+    if (histTicks) histAxis.tickValues(histTicks);
+    else histAxis.ticks(5);
+    rightAxis.call(histAxis);
+  }
+  if (rightLabel) {
+    rightLabel.text(state.yLog
+      ? 'Tax returns per log-decade (log scale)'
+      : 'Tax returns per log-decade');
+  }
+
+  // Segment-boundary "discontinuity" markers — small double-slash at each
+  // internal boundary signals that the x-scale's slope changes here.
+  segmentMarkers.selectAll('*').remove();
+  if (state.xLinear) {
+    const segs = x.segments;
+    for (let i = 0; i < segs.length - 1; i++) {
+      const px = segs[i].end;
+      const yTop = innerH - 5;
+      const yBot = innerH + 5;
+      const path = `M${px - 3},${yBot} L${px + 1},${yTop} M${px - 1},${yBot} L${px + 3},${yTop}`;
+      segmentMarkers.append('path')
+        .attr('class', 'segment-mark')
+        .attr('d', path);
+    }
+  }
+}
+
+// Right axis (tax returns) — drawAxes() populates the ticks
+const rightAxis = g.append('g')
+  .attr('class', 'axis axis-right')
+  .attr('transform', `translate(${innerW},0)`);
+
+// Axis labels
+const xAxisLabel = g.append('text').attr('class', 'axis-label')
+  .attr('x', innerW).attr('y', innerH + 42).attr('text-anchor', 'end')
+  .text('Annual income (log scale)');
+g.append('text').attr('class', 'axis-label left')
+  .attr('transform', 'rotate(-90)')
+  .attr('x', 0).attr('y', -48).attr('text-anchor', 'end')
+  .text('Marginal tax rate');
+const rightLabel = g.append('text').attr('class', 'axis-label right')
+  .attr('transform', 'rotate(-90)')
+  .attr('x', 0).attr('y', innerW + 56).attr('text-anchor', 'end')
+  .text('Tax returns per log-decade');
+
+drawAxes();
+
+// Tax curve layers (on top of histogram)
+function buildCurvePoints() {
+  const pts = [];
+  const N = 800;
+  const lo = Math.log10(X_MIN);
+  const hi = Math.log10(X_MAX);
+  for (let i = 0; i <= N; i++) {
+    const lx = lo + (i / N) * (hi - lo);
+    const inc = Math.pow(10, lx);
+    pts.push([inc, marginalRate(inc)]);
+  }
+  const { zeroThreshold, plateau, curveType, filingJoint } = state;
+
+  if (curveType === 'brackets-2026') {
+    const cfg = BRACKETS_2026[filingJoint ? 'joint' : 'single'];
+    for (const b of cfg.brackets) {
+      const inc = b.from + cfg.stdDeduction;
+      pts.push([Math.max(1, inc * 0.9999), marginalRate(Math.max(1, inc * 0.9999))]);
+      pts.push([inc, marginalRate(inc)]);
+      pts.push([inc * 1.0001, marginalRate(inc * 1.0001)]);
+    }
+    pts.push([Math.max(1, cfg.stdDeduction * 0.9999), 0]);
+    pts.push([cfg.stdDeduction, 0]);
+    pts.push([cfg.stdDeduction * 1.0001, marginalRate(cfg.stdDeduction * 1.0001)]);
+  } else if (plateau > zeroThreshold) {
+    // Boundary points at the threshold and plateau make linear/s-curve/exp render cleanly.
+    pts.push([Math.max(1, zeroThreshold * 0.999), marginalRate(Math.max(1, zeroThreshold * 0.999))]);
+    pts.push([zeroThreshold, marginalRate(zeroThreshold)]);
+    pts.push([plateau, marginalRate(plateau)]);
+    pts.push([plateau * 1.001, marginalRate(plateau * 1.001)]);
+    // The step curve also has a discontinuity at the midpoint; inject a tight
+    // pair of points around it so the jump renders as an instantaneous edge.
+    if (curveType === 'step') {
+      const mid = (zeroThreshold + plateau) / 2;
+      pts.push([mid * 0.99999, marginalRate(mid * 0.99999)]);
+      pts.push([mid, marginalRate(mid)]);
+      pts.push([mid * 1.00001, marginalRate(mid * 1.00001)]);
+    }
+  }
+
+  pts.sort((a, b) => a[0] - b[0]);
+  return pts;
+}
+
+const lineGen = d3.line()
+  .x(d => x(Math.max(X_MIN, d[0])))
+  .y(d => y(d[1]));
+
+const areaGen = d3.area()
+  .x(d => x(Math.max(X_MIN, d[0])))
+  .y0(innerH)
+  .y1(d => y(d[1]));
+
+const areaPath = g.append('path').attr('class', 'area');
+const curvePath = g.append('path').attr('class', 'curve');
+
+// Threshold markers
+const thresholdGroup = g.append('g').attr('class', 'thresholds');
+const zeroLine = thresholdGroup.append('line').attr('class', 'marker-line');
+const zeroLabel = thresholdGroup.append('text').attr('class', 'marker-label').attr('text-anchor', 'start');
+const plateauLine = thresholdGroup.append('line').attr('class', 'marker-line');
+const plateauLabel = thresholdGroup.append('text').attr('class', 'marker-label').attr('text-anchor', 'start');
+
+// Income marker
+const incomeGroup = g.append('g').attr('class', 'income');
+const incomeLine = incomeGroup.append('line').attr('class', 'income-line');
+const incomeDot = incomeGroup.append('circle').attr('class', 'income-dot').attr('r', 4);
+const incomeLabel = incomeGroup.append('text').attr('class', 'marker-label')
+  .attr('text-anchor', 'middle').style('font-weight', 600).style('fill', 'var(--ink)');
+
+// Hover overlay
+const hoverLine = g.append('line').attr('class', 'hover-line').attr('y1', 0).attr('y2', innerH);
+const hoverDot = g.append('circle').attr('class', 'hover-dot').attr('r', 4);
+const hoverRect = g.append('rect')
+  .attr('width', innerW).attr('height', innerH)
+  .attr('fill', 'transparent')
+  .on('mousemove', onHover)
+  .on('mouseleave', () => {
+    hoverLine.style('opacity', 0);
+    hoverDot.style('opacity', 0);
+    tooltip.style('opacity', 0);
+  });
+
+function onHover(event) {
+  const [mx, my] = d3.pointer(event);
+  const inc = x.invert(mx);
+  const rate = marginalRate(inc);
+  const tax = calculateTaxes(inc);
+  const eff = inc > 0 ? (tax / inc) * 100 : 0;
+  hoverLine.attr('x1', mx).attr('x2', mx).style('opacity', 1);
+  hoverDot.attr('cx', mx).attr('cy', y(rate)).style('opacity', 1);
+  const rect = svg.node().getBoundingClientRect();
+  const vbW = svg.node().viewBox.baseVal.width || W;
+  const scale = rect.width / vbW;
+
+  // When the mouse is in the bottom (histogram) region, look up the actual
+  // bracket and append its real-data attribution.
+  let extra = '';
+  if (state.showHist && my >= innerH * HIST_TOP_FRAC) {
+    const dist = state.capGainsAsIncome ? cgIncomeDistribution : incomeDistribution;
+    const bracket = dist.find(b => inc >= b.min && inc < b.max);
+    if (bracket) {
+      const d = bracketDensity(bracket);
+      extra = '<hr>' +
+        `${fmtMoney(bracket.min)}–${fmtMoney(bracket.max)} bracket<br>` +
+        `${bracket.count.toLocaleString()} tax returns<br>` +
+        `${fmtCount(d)} per log-decade<br>` +
+        `<small>Source: IRS Statistics of Income, Publication 1304 Table 1.1, Tax Year 2023. ~158M U.S. individual income tax returns (excluding 2.18M "no AGI" returns).</small>`;
+    }
+  }
+
+  tooltip
+    .style('left', (margin.left + mx) * scale + 'px')
+    .style('top', (margin.top + y(rate)) * scale + 'px')
+    .style('opacity', 1)
+    .html(
+      `<strong>${fmtMoney(inc)}</strong> income<br>` +
+      `marginal: ${fmtPct(rate)}<br>` +
+      `effective: ${fmtPct(eff)}<br>` +
+      `tax bill: ${fmtMoney(tax)}` +
+      extra
+    );
+}
+
+/* ============================================================
+   Histogram render — real bracket data as a step plot
+   ============================================================ */
+function renderHistogram() {
+  const visible = state.showHist;
+  histGroup.style('display', visible ? null : 'none');
+  rightAxis.style('display', visible ? null : 'none');
+  rightLabel.style('display', visible ? null : 'none');
+  if (!visible) return;
+
+  const dist = state.capGainsAsIncome ? cgIncomeDistribution : incomeDistribution;
+
+  // Collect drawable steps: each bracket contributes one flat plateau.
+  const steps = [];
+  dist.forEach(b => {
+    const lo = Math.max(X_MIN, b.min);
+    if (b.max <= lo) return;
+    const density = bracketDensity(b);
+    steps.push({
+      xLo: x(lo),
+      xHi: x(b.max),
+      yTop: yHist(density)
+    });
+  });
+
+  if (steps.length === 0) {
+    histAreaPath.attr('d', '');
+    histLinePath.attr('d', '');
+    return;
+  }
+
+  // Outline path: trace only the tops of the steps (line stroke).
+  let linePath = `M${steps[0].xLo},${steps[0].yTop} L${steps[0].xHi},${steps[0].yTop}`;
+  for (let i = 1; i < steps.length; i++) {
+    linePath += ` L${steps[i].xLo},${steps[i].yTop} L${steps[i].xHi},${steps[i].yTop}`;
+  }
+
+  // Area path: outline plus a closing edge along the baseline.
+  const areaPath = linePath +
+    ` L${steps[steps.length - 1].xHi},${innerH}` +
+    ` L${steps[0].xLo},${innerH} Z`;
+
+  histAreaPath.attr('d', areaPath);
+  histLinePath.attr('d', linePath);
+}
+
+/* ============================================================
+   Main render
+   ============================================================ */
+function render() {
+  renderHistogram();
+
+  // Position poverty markers (these depend on x scale, so update on every render).
+  // The 1-person line ($15,960) and family-of-4 line ($33,000) are close together
+  // on a log scale, so the 1-person label flips to the LEFT of its line on log to
+  // avoid colliding with the family-of-4 label. On the discontinuous linear scale
+  // both markers sit near the left edge, so the 1-person label needs to stay on
+  // the RIGHT (placing it left would push it off the chart).
+  povertyMarkers.forEach((m, i) => {
+    const px = x(m.value);
+    m.line.attr('x1', px).attr('x2', px);
+    const flipLeft = (i === 0 && !state.xLinear);
+    m.label
+      .attr('x',           flipLeft ? px - 4 : px + 4)
+      .attr('text-anchor', flipLeft ? 'end'  : 'start');
+  });
+
+  const pts = buildCurvePoints();
+  const areaPts = pts.filter(p => p[0] <= state.myIncome);
+  if (state.myIncome >= X_MIN) areaPts.push([state.myIncome, marginalRate(state.myIncome)]);
+
+  curvePath.attr('d', lineGen(pts));
+  areaPath.attr('d', areaPts.length > 1 ? areaGen(areaPts) : null);
+
+  // Threshold markers — hide in 2026 mode
+  const isBrackets = state.curveType === 'brackets-2026';
+  thresholdGroup.style('display', isBrackets ? 'none' : null);
+  if (!isBrackets) {
+    const showZero = state.zeroThreshold >= X_MIN;
+    zeroLine
+      .attr('x1', x(Math.max(X_MIN, state.zeroThreshold)))
+      .attr('x2', x(Math.max(X_MIN, state.zeroThreshold)))
+      .attr('y1', 0).attr('y2', innerH)
+      .style('opacity', showZero ? 1 : 0);
+    zeroLabel
+      .attr('x', x(Math.max(X_MIN, state.zeroThreshold)) + 3)
+      .attr('y', -4)
+      .text('tax starts: ' + fmtMoney(state.zeroThreshold))
+      .style('opacity', showZero ? 1 : 0);
+    plateauLine
+      .attr('x1', x(state.plateau))
+      .attr('x2', x(state.plateau))
+      .attr('y1', 0).attr('y2', innerH);
+    plateauLabel
+      .attr('x', x(state.plateau) + 3)
+      .attr('y', -16)
+      .text('plateau: ' + fmtMoney(state.plateau));
+  }
+
+  // Income marker
+  const showInc = state.myIncome >= X_MIN;
+  if (showInc) {
+    const xi = x(state.myIncome);
+    const yi = y(marginalRate(state.myIncome));
+    incomeLine.attr('x1', xi).attr('x2', xi).attr('y1', yi).attr('y2', innerH);
+    incomeDot.attr('cx', xi).attr('cy', yi);
+    incomeLabel.attr('x', xi).attr('y', innerH + 36).text('you: ' + fmtMoney(state.myIncome));
+    incomeGroup.style('opacity', 1);
+  } else {
+    incomeGroup.style('opacity', 0);
+  }
+
+  // Tax math
+  const taxes      = calculateTaxes(state.myIncome);
+  const eff        = state.myIncome > 0 ? (taxes / state.myIncome) * 100 : 0;
+  const baseRev    = calculateNationalRevenue();
+  // If treating cap gains as ordinary income, add the marginal-rate delta on the
+  // ~$1.76T realized annually. Cap gains accrue mostly to high earners; use the
+  // marginal rate at $5M as a representative ordinary rate.
+  const cgBoost    = state.capGainsAsIncome
+    ? Math.max(0, marginalRate(5_000_000) - CAP_GAINS_PREFERENTIAL_RATE) / 100 * CAP_GAINS_BASE
+    : 0;
+  const revenue    = baseRev + cgBoost;
+  const deficit    = FEDERAL_OUTLAYS_FY26 - NON_IIT_REVENUE_FY26 - revenue;
+  const isSurplus  = deficit < 0;
+  // Surplus pays down debt; deficit adds to it (no longer monotonic).
+  const debtEOY = NATIONAL_DEBT_FY26_START + deficit;
+
+  document.getElementById('kpi-effective').textContent = fmtPct(eff);
+  document.getElementById('kpi-taxes').textContent = fmtMoney(taxes);
+  document.getElementById('kpi-taxes-sub').textContent =
+    state.myIncome > 0 ? `on ${fmtMoney(state.myIncome)} income` : 'enter an income';
+
+  document.getElementById('kpi-revenue').textContent = fmtMoney(revenue);
+  const revLines = [
+    '~158M tax returns',
+    linkTo(SOURCE_URL.irsPub1304, `${fmtMoney(ACTUAL_IIT_REVENUE)} actual collected in 2023`)
+  ];
+  if (state.capGainsAsIncome) {
+    revLines.push(`incl. +${fmtMoney(cgBoost)} cap-gains delta`);
+  }
+  document.getElementById('kpi-revenue-sub').innerHTML = revLines.join('<br>');
+
+  // Deficit / Surplus — label flips when revenue exceeds spending
+  const defEl    = document.getElementById('kpi-deficit');
+  const defLabel = document.getElementById('kpi-deficit-label');
+  defLabel.textContent = isSurplus ? 'Projected FY26 surplus' : 'Projected FY26 deficit';
+  defEl.textContent = isSurplus
+    ? '+' + fmtMoney(Math.abs(deficit))
+    : '−' + fmtMoney(Math.abs(deficit));
+  defEl.classList.toggle('neg', !isSurplus);
+  defEl.classList.toggle('pos', isSurplus);
+  // Sub-line: revenue − outlays (rather than outlays − revenue), with each
+  // number wrapped in a hover popover showing the CBO Feb 2026 breakdown.
+  const totalRev = NON_IIT_REVENUE_FY26 + revenue;
+
+  // Revenue popover: simulated IIT plus the four CBO non-IIT line items
+  const revPop =
+    `<div class="popover left-anchor">` +
+      `<div class="title">FY26 revenue · CBO baseline</div>` +
+      popRow('Individual income tax (your curve)', revenue, 'custom') +
+      FY26_REVENUE_PARTS.map(p => popRow(p.label, p.value)).join('') +
+      popRow('Total', totalRev, 'total') +
+    `</div>`;
+
+  // Outlays popover: full CBO breakdown with mandatory subcategories indented
+  const outPop =
+    `<div class="popover">` +
+      `<div class="title">FY26 outlays · CBO baseline</div>` +
+      FY26_OUTLAY_PARTS.flatMap(p =>
+        p.children
+          ? [popRow(p.label, p.value),
+             ...p.children.map(c => popRow(c.label, c.value, 'sub'))]
+          : [popRow(p.label, p.value)]
+      ).join('') +
+      popRow('Total', FEDERAL_OUTLAYS_FY26, 'total') +
+    `</div>`;
+
+  document.getElementById('kpi-deficit-sub').innerHTML =
+    `revenue <span class="popover-trigger">${fmtMoney(totalRev)}${revPop}</span>` +
+    ` − outlaid expenses ` +
+    `<a href="${SOURCE_URL.cboOutlook}" target="_blank" rel="noopener" class="popover-trigger is-link">` +
+      `${fmtMoney(FEDERAL_OUTLAYS_FY26)}${outPop}` +
+    `</a>`;
+  // Static baseline value (not a delta) — what the deficit would be under
+  // current law applied to the same distribution. Always negative since
+  // current law produces a deficit, so the leading "−" is hard-coded.
+  document.getElementById('kpi-deficit-delta').textContent =
+    `−${fmtMoney(ACTUAL_DEFICIT_BASELINE)} baseline under current law`;
+  document.getElementById('kpi-deficit-delta').className = 'delta';
+
+  document.getElementById('kpi-debt').textContent = fmtMoney(debtEOY);
+  const debtStartLink = linkTo(SOURCE_URL.treasuryDebt, fmtMoney(NATIONAL_DEBT_FY26_START));
+  document.getElementById('kpi-debt-sub').innerHTML = isSurplus
+    ? `2025/10/01 debt ${debtStartLink} − projected surplus`
+    : `2025/10/01 debt ${debtStartLink} + projected deficit`;
+  // Baseline FY26 EOY debt = FY26 start-of-year debt + CBO's projected FY26
+  // baseline deficit. Static reference — doesn't change as the curve is adjusted.
+  const baselineDebt = NATIONAL_DEBT_FY26_START + ACTUAL_DEFICIT_BASELINE;
+  const debtDeltaEl = document.getElementById('kpi-debt-delta');
+  debtDeltaEl.textContent = `${fmtMoney(baselineDebt)} baseline under current law`;
+  debtDeltaEl.className = 'delta';
+}
+
+/* ============================================================
+   Control wiring
+   ============================================================ */
+function updateControlsEnabled() {
+  const isBrackets = state.curveType === 'brackets-2026';
+  ['ctrl-maxRate', 'ctrl-plateau', 'ctrl-zero'].forEach(id => {
+    document.getElementById(id).classList.toggle('disabled', isBrackets);
+  });
+}
+
+function syncMyIncome() {
+  const slider = document.getElementById('myIncomeSlider');
+  state.myIncome = sliderToDollars(+slider.value, 0);
+  document.getElementById('myIncomeText').textContent = fmtMoneyFull(state.myIncome);
+  render();
+}
+
+function syncMaxRate() {
+  const slider = document.getElementById('maxRateSlider');
+  state.maxRate = +slider.value;
+  document.getElementById('maxRateText').textContent = state.maxRate.toFixed(0) + '%';
+  render();
+}
+
+function syncPlateau() {
+  const slider = document.getElementById('plateauSlider');
+  state.plateau = sliderToDollars(+slider.value, 15960);
+  document.getElementById('plateauText').textContent = fmtMoneyFull(state.plateau);
+  if (state.zeroThreshold >= state.plateau) {
+    state.zeroThreshold = state.plateau * 0.5;
+    document.getElementById('zeroSlider').value = dollarsToSlider(state.zeroThreshold, 0);
+    document.getElementById('zeroText').textContent = fmtMoneyFull(state.zeroThreshold);
+  }
+  render();
+}
+
+function syncZero() {
+  const slider = document.getElementById('zeroSlider');
+  state.zeroThreshold = Math.min(state.plateau - 1, sliderToDollars(+slider.value, 0));
+  document.getElementById('zeroText').textContent = fmtMoneyFull(state.zeroThreshold);
+  render();
+}
+
+document.getElementById('myIncomeSlider').addEventListener('input', syncMyIncome);
+document.getElementById('maxRateSlider').addEventListener('input', syncMaxRate);
+document.getElementById('plateauSlider').addEventListener('input', syncPlateau);
+document.getElementById('zeroSlider').addEventListener('input', syncZero);
+
+document.querySelectorAll('#curveButtons button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#curveButtons button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.curveType = btn.dataset.curve;
+    updateControlsEnabled();
+    render();
+  });
+});
+
+document.getElementById('showHist').addEventListener('change', e => {
+  state.showHist = e.target.checked;
+  render();
+});
+
+document.getElementById('filingJoint').addEventListener('change', e => {
+  state.filingJoint = e.target.checked;
+  render();
+});
+
+document.getElementById('capGainsAsIncome').addEventListener('change', e => {
+  state.capGainsAsIncome = e.target.checked;
+  render();
+});
+
+document.getElementById('xLinear').addEventListener('change', e => {
+  state.xLinear = e.target.checked;
+  x = buildXScale();
+  drawAxes();
+  render();
+});
+
+// Initialize all toggle checkbox states from the JS state object — single
+// source of truth, so changing a default in `state` automatically updates
+// the UI without needing to also edit `checked` attributes in HTML.
+document.getElementById('showHist').checked          = state.showHist;
+document.getElementById('filingJoint').checked       = state.filingJoint;
+document.getElementById('capGainsAsIncome').checked  = state.capGainsAsIncome;
+document.getElementById('xLinear').checked           = state.xLinear;
+
+// Same idea for the curve-shape buttons — pick the one whose data-curve
+// matches state.curveType and mark it active.
+document.querySelectorAll('#curveButtons button').forEach(b => {
+  b.classList.toggle('active', b.dataset.curve === state.curveType);
+});
+
+document.getElementById('yLog').addEventListener('change', e => {
+  state.yLog = e.target.checked;
+  yHist = buildYHistScale();
+  drawAxes();
+  render();
+});
+document.getElementById('yLog').checked = state.yLog;
+
+/* ============================================================
+   Init
+   ============================================================ */
+function init() {
+  document.getElementById('myIncomeSlider').value = dollarsToSlider(state.myIncome, 0);
+  document.getElementById('maxRateSlider').value = state.maxRate;
+  document.getElementById('plateauSlider').value = dollarsToSlider(state.plateau, 15960);
+  document.getElementById('zeroSlider').value = dollarsToSlider(state.zeroThreshold, 0);
+
+  document.getElementById('myIncomeText').textContent = fmtMoneyFull(state.myIncome);
+  document.getElementById('maxRateText').textContent = state.maxRate + '%';
+  document.getElementById('plateauText').textContent = fmtMoneyFull(state.plateau);
+  document.getElementById('zeroText').textContent = fmtMoneyFull(state.zeroThreshold);
+
+  updateControlsEnabled();
+  render();
+}
+init();
+</script>
+</body>
+</html>
